@@ -231,7 +231,7 @@ def get_candidate_bind_for_resume(parsed: Dict[str, Any]) -> Dict[str, Any]:
         descs = p.get("descriptions") or []
         desc_blob = "\n".join(str(x) for x in descs if x) if isinstance(descs, list) else ""
         raw_b = _clean_str(p.get("raw_block"))
-        description = (desc_blob or raw_b)[:500] or None
+        description = (desc_blob or raw_b)[:1000] or None
         projects_out.append(
             {
                 "name": _clean_str(p.get("project_name")),

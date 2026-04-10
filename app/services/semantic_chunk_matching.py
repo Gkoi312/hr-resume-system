@@ -26,10 +26,12 @@ from app.rag.hybrid_retrieval import (
 )
 from app.rag.vector_store import _cosine
 
-# Fusion into overall semantic_score (sum normalized at runtime; env can override)
-_DEFAULT_WEIGHT_SKILL = 0.15
-_DEFAULT_WEIGHT_DELIVERY = 0.75
-_DEFAULT_WEIGHT_ROLE = 0.10
+# Fusion into overall semantic_score (sum normalized at runtime; env can override).
+# `role` is kept for diagnostics, but default contribution is disabled because the
+# current job/candidate role texts are not yet well-aligned semantically.
+_DEFAULT_WEIGHT_SKILL = 0.20
+_DEFAULT_WEIGHT_DELIVERY = 0.80
+_DEFAULT_WEIGHT_ROLE = 0.00
 
 # Delivery = blend job coverage (每条职责能否被经历对上) with cand breadth (多段经历各自对齐 JD)
 _DEFAULT_DELIVERY_JOB_COV = 0.62

@@ -282,6 +282,7 @@ class CandidateJobMatchModel(Base):
     overall_score: Mapped[Optional[float]] = mapped_column(nullable=True)
     skill_score: Mapped[Optional[float]] = mapped_column(nullable=True)
     experience_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    llm_quality_score: Mapped[Optional[float]] = mapped_column(nullable=True)
     education_score: Mapped[Optional[float]] = mapped_column(nullable=True)
     semantic_score: Mapped[Optional[float]] = mapped_column(nullable=True)
     industry_score: Mapped[Optional[float]] = mapped_column(nullable=True)
@@ -316,6 +317,7 @@ class CandidateJobMatchModel(Base):
             "overall_score": self.overall_score,
             "skill_score": self.skill_score,
             "experience_score": self.experience_score,
+            "llm_quality_score": self.llm_quality_score,
             "education_score": self.education_score,
             "semantic_score": self.semantic_score,
             "industry_score": self.industry_score,

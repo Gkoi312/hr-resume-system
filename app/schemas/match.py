@@ -35,6 +35,29 @@ class DeliveryAlignmentItem(BaseModel):
     shared_terms: List[str] = []
 
 
+class ScoreBreakdown(BaseModel):
+    """Top-level score composition for one match."""
+
+    skill_score: Optional[float] = None
+    semantic_score: Optional[float] = None
+    llm_quality_score: Optional[float] = None
+    skill_weight: Optional[float] = None
+    semantic_weight: Optional[float] = None
+    llm_quality_weight: Optional[float] = None
+    overall_score: Optional[float] = None
+
+
+class LLMQualityBreakdown(BaseModel):
+    """Structured LLM quality dimensions and evidence."""
+
+    impact_score: Optional[float] = None
+    evidence_quality_score: Optional[float] = None
+    consistency_risk: Optional[float] = None
+    llm_quality_score: Optional[float] = None
+    summary: Optional[str] = None
+    status: Optional[str] = None
+
+
 class MatchExplanation(BaseModel):
     """
     Structured, HR-facing explanation for a single candidate-job match.
@@ -59,9 +82,15 @@ class MatchExplanation(BaseModel):
         "further_screening",
         "not_recommended",
     ]
+    matched_skills: List[str] = []
+    missing_skills: List[str] = []
+    job_skill_terms: List[str] = []
+    candidate_skill_terms: List[str] = []
     semantic_status: Optional[str] = None
     semantic_evidence: Optional[List[SemanticSnippet]] = None
     delivery_alignments: Optional[List[DeliveryAlignmentItem]] = None
+    llm_quality: Optional[LLMQualityBreakdown] = None
+    score_breakdown: Optional[ScoreBreakdown] = None
 
 
 class MatchBase(BaseModel):
@@ -70,6 +99,7 @@ class MatchBase(BaseModel):
     overall_score: Optional[float] = None
     skill_score: Optional[float] = None
     experience_score: Optional[float] = None
+    llm_quality_score: Optional[float] = None
     education_score: Optional[float] = None
     semantic_score: Optional[float] = None
     industry_score: Optional[float] = None
@@ -93,6 +123,7 @@ class MatchUpdate(BaseModel):
     overall_score: Optional[float] = None
     skill_score: Optional[float] = None
     experience_score: Optional[float] = None
+    llm_quality_score: Optional[float] = None
     education_score: Optional[float] = None
     semantic_score: Optional[float] = None
     industry_score: Optional[float] = None

@@ -24,26 +24,41 @@ from app.database.repository.match_repository import match_repository
 from app.rag.hybrid_retrieval import tokenize
 from app.rag.vector_store import vector_store
 from app.services.education_resume_gate import filter_candidates_by_resume_education
+from app.services.llm_quality_scoring import score_candidate_quality_with_llm
 from app.services.semantic_chunk_matching import (
     compute_semantic_scores_for_candidates_bulk,
 )
+from app.services.skill_rule_scoring import score_candidate_skills
 from app.schemas.match import (
     DeliveryAlignmentItem,
     EducationFilterCandidateItem,
     EducationFilterResponse,
+    LLMQualityBreakdown,
     MatchExplanation,
     MatchResponse,
     MatchWithCandidate,
+    ScoreBreakdown,
     SemanticSnippet,
 )
 
+_WEIGHT_SKILL = 0.30
+_WEIGHT_SEMANTIC = 0.40
+_WEIGHT_LLM = 0.30
+
 
 def _pros_cons_recommendation(
+    overall_score: float,
     semantic_score: float,
+    skill_score: float,
+    llm_quality_score: float,
     semantic_status: Optional[str],
 ) -> tuple[List[str], List[str], str]:
     pros: List[str] = []
     cons: List[str] = []
+    if skill_score >= 80:
+        pros.append("岗位技能命中率较高")
+    elif skill_score < 40:
+        cons.append("岗位技能命中率偏低")
     if semantic_status == "not_indexed":
         cons.append("候选人简历未建立语义索引，无法计算语义匹配")
     else:
@@ -53,11 +68,15 @@ def _pros_cons_recommendation(
             pros.append("简历与岗位存在一定语义相关性")
         else:
             cons.append("简历与岗位语义相关性偏低")
-    if semantic_score >= 80:
+    if llm_quality_score >= 75:
+        pros.append("项目与实习描述较具体，经历质量较好")
+    elif llm_quality_score < 40:
+        cons.append("项目与实习描述较空泛，证据质量偏弱")
+    if overall_score >= 80:
         recommendation = "建议进入初筛"
-    elif semantic_score >= 60:
+    elif overall_score >= 60:
         recommendation = "建议备选"
-    elif semantic_score >= 40:
+    elif overall_score >= 40:
         recommendation = "可观望"
     else:
         recommendation = "暂不推荐"
@@ -66,8 +85,11 @@ def _pros_cons_recommendation(
 
 def _build_match_explanation(
     education_gate: Dict[str, Any],
+    overall_score: float,
+    skill_info: Dict[str, Any],
     semantic_score: float,
     semantic_status: Optional[str],
+    llm_info: Dict[str, Any],
 ) -> MatchExplanation:
     hard_met: List[str] = []
     hard_missing: List[str] = []
@@ -86,6 +108,12 @@ def _build_match_explanation(
                 " / ".join(levels) if levels else "已匹配",
             )
         )
+    matched_skills = list(skill_info.get("matched_skills") or [])
+    missing_skills = list(skill_info.get("missing_skills") or [])
+    if matched_skills:
+        hard_met.append("岗位技能已命中：{}".format(", ".join(matched_skills)))
+    if missing_skills:
+        hard_missing.append("岗位技能未命中：{}".format(", ".join(missing_skills)))
 
     if semantic_status == "not_indexed":
         risks.append("语义检索不可用：需先完成候选人侧向量索引")
@@ -93,16 +121,33 @@ def _build_match_explanation(
 
     if semantic_score >= 75:
         strong.append("语义向量匹配表现较好，可结合片段证据复核")
+    llm_status = str(llm_info.get("status") or "")
+    if llm_status == "available":
+        if float(llm_info.get("impact_score") or 0.0) >= 75:
+            strong.append("项目/实习体现出较强结果导向或业务价值")
+        if float(llm_info.get("evidence_quality_score") or 0.0) >= 75:
+            strong.append("项目/实习描述较具体，技术动作与职责边界较清晰")
+        if float(llm_info.get("consistency_risk") or 0.0) >= 60:
+            risks.append("项目/实习描述存在一定空泛或堆词风险")
+    elif llm_status and llm_status != "available":
+        risks.append("LLM 质量评分不可用：{}".format(llm_status))
 
-    if semantic_score >= 80:
+    if overall_score >= 80:
         suggested = "recommend_interview"
-    elif semantic_score >= 60:
+    elif overall_score >= 60:
         suggested = "further_screening"
     else:
         suggested = "not_recommended"
 
     summary_parts: List[str] = []
-    summary_parts.append(f"语义匹配分：{semantic_score}。")
+    summary_parts.append(
+        "综合匹配分：{}。技能分：{}；语义分：{}；质量分：{}。".format(
+            overall_score,
+            round(float(skill_info.get("skill_score") or 0.0), 1),
+            semantic_score,
+            round(float(llm_info.get("llm_quality_score") or 0.0), 1),
+        )
+    )
     if hard_met:
         summary_parts.append("已满足的核心条件包括：" + "；".join(hard_met) + "。")
     if hard_missing:
@@ -121,6 +166,10 @@ def _build_match_explanation(
         summary_for_hr=summary_text,
         interview_focus_points=focus_points,
         suggested_action=suggested,
+        matched_skills=matched_skills,
+        missing_skills=missing_skills,
+        job_skill_terms=list(skill_info.get("job_skill_terms") or []),
+        candidate_skill_terms=list(skill_info.get("candidate_skill_terms") or []),
     )
 
 
@@ -203,9 +252,28 @@ class MatchingService:
                 if isinstance(sem_details, dict)
                 else None
             )
-            overall = round(float(sem_s), 1)
-            pros, cons, rec = _pros_cons_recommendation(overall, sem_status)
-            explanation = _build_match_explanation(edu_gate, overall, sem_status)
+            skill_info = score_candidate_skills(job, candidate)
+            llm_info = await score_candidate_quality_with_llm(candidate)
+            skill_score = round(float(skill_info.get("skill_score") or 0.0), 1)
+            semantic_score = round(float(sem_s), 1)
+            llm_quality_score = round(float(llm_info.get("llm_quality_score") or 0.0), 1)
+            overall = round(
+                _WEIGHT_SKILL * skill_score
+                + _WEIGHT_SEMANTIC * semantic_score
+                + _WEIGHT_LLM * llm_quality_score,
+                1,
+            )
+            pros, cons, rec = _pros_cons_recommendation(
+                overall, semantic_score, skill_score, llm_quality_score, sem_status
+            )
+            explanation = _build_match_explanation(
+                edu_gate,
+                overall,
+                skill_info,
+                semantic_score,
+                sem_status,
+                llm_info,
+            )
             if isinstance(sem_details, dict):
                 explanation.semantic_status = sem_details.get("semantic_status")
             evidence_snippets = (
@@ -231,14 +299,32 @@ class MatchingService:
             raw_aln = dd.get("delivery_alignments") if isinstance(dd, dict) else None
             if isinstance(raw_aln, list) and raw_aln:
                 explanation.delivery_alignments = _enrich_delivery_alignments(raw_aln)
+            explanation.llm_quality = LLMQualityBreakdown(
+                impact_score=float(llm_info.get("impact_score") or 0.0),
+                evidence_quality_score=float(llm_info.get("evidence_quality_score") or 0.0),
+                consistency_risk=float(llm_info.get("consistency_risk") or 0.0),
+                llm_quality_score=llm_quality_score,
+                summary=llm_info.get("summary"),
+                status=str(llm_info.get("status") or "unknown"),
+            )
+            explanation.score_breakdown = ScoreBreakdown(
+                skill_score=skill_score,
+                semantic_score=semantic_score,
+                llm_quality_score=llm_quality_score,
+                skill_weight=_WEIGHT_SKILL,
+                semantic_weight=_WEIGHT_SEMANTIC,
+                llm_quality_weight=_WEIGHT_LLM,
+                overall_score=overall,
+            )
             match = await match_repository.create(
                 job_id=job_id,
                 candidate_id=candidate.id,
                 overall_score=overall,
-                skill_score=None,
+                skill_score=skill_score,
                 experience_score=None,
+                llm_quality_score=llm_quality_score,
                 education_score=None,
-                semantic_score=overall,
+                semantic_score=semantic_score,
                 industry_score=None,
                 pros=pros if pros else None,
                 cons=cons if cons else None,
@@ -324,6 +410,7 @@ class MatchingService:
                 overall_score=m.overall_score,
                 skill_score=m.skill_score,
                 experience_score=m.experience_score,
+                llm_quality_score=getattr(m, "llm_quality_score", None),
                 education_score=m.education_score,
                 semantic_score=m.semantic_score,
                 industry_score=m.industry_score,

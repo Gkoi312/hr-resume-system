@@ -22,6 +22,7 @@ class MatchRepository:
         overall_score: Optional[float] = None,
         skill_score: Optional[float] = None,
         experience_score: Optional[float] = None,
+        llm_quality_score: Optional[float] = None,
         education_score: Optional[float] = None,
         semantic_score: Optional[float] = None,
         industry_score: Optional[float] = None,
@@ -38,6 +39,7 @@ class MatchRepository:
                 overall_score=overall_score,
                 skill_score=skill_score,
                 experience_score=experience_score,
+                llm_quality_score=llm_quality_score,
                 education_score=education_score,
                 semantic_score=semantic_score,
                 industry_score=industry_score,
@@ -120,6 +122,7 @@ class MatchRepository:
         overall_score: Optional[float] = None,
         skill_score: Optional[float] = None,
         experience_score: Optional[float] = None,
+        llm_quality_score: Optional[float] = None,
         education_score: Optional[float] = None,
         semantic_score: Optional[float] = None,
         industry_score: Optional[float] = None,
@@ -143,6 +146,8 @@ class MatchRepository:
                 match.skill_score = skill_score
             if experience_score is not None:
                 match.experience_score = experience_score
+            if llm_quality_score is not None:
+                match.llm_quality_score = llm_quality_score
             if education_score is not None:
                 match.education_score = education_score
             if semantic_score is not None:
