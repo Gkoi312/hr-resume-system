@@ -1,0 +1,128 @@
+# 招聘 / JD / 简历场景补充词（jieba 默认词典易拆错的词）
+# 每行一个词或短语；行内 # 后为注释；加载一次，见 hybrid_retrieval._load_jieba_user_words
+
+后端
+前端
+全栈
+校招
+社招
+秋招
+春招
+应届
+应届生
+实习生
+实习
+内推
+简历
+岗位
+算法岗
+开发岗
+测试岗
+运维
+产品经理
+大数据
+云计算
+微服务
+高并发
+分布式
+容器化
+机器学习
+深度学习
+数据分析
+自然语言处理
+大模型
+向量化
+知识图谱
+图数据库
+消息队列
+负载均衡
+持续集成
+敏捷开发
+
+# 英文技术词（整词，避免被拆开；可按需增删）
+Kubernetes
+Docker
+Redis
+MySQL
+PostgreSQL
+MongoDB
+Elasticsearch
+FastAPI
+Django
+Flask
+Spring Boot
+TypeScript
+JavaScript
+Node.js
+GraphQL
+Kafka
+RabbitMQ
+gRPC
+DevOps
+SRE
+LLM
+RAG
+API
+SDK
+CI/CD
+
+# 岗位 / 领域英文词组（JD、简历中英混写时 jieba 更易整段识别；ASCII 段由 hybrid_retrieval.tokenize 切词）
+machine learning
+deep learning
+reinforcement learning
+supervised learning
+unsupervised learning
+transfer learning
+federated learning
+online learning
+natural language processing
+computer vision
+speech recognition
+recommendation system
+information retrieval
+data mining
+data science
+business intelligence
+A/B testing
+growth hacking
+digital marketing
+content marketing
+social media marketing
+search engine optimization
+SEO
+SEM
+go to market
+product market fit
+user research
+user experience
+user interface
+product manager
+product owner
+project manager
+program manager
+technical writer
+solutions architect
+site reliability engineer
+large language model
+foundation model
+generative AI
+prompt engineering
+model fine tuning
+RLHF
+RAG pipeline
+vector database
+embedding model
+semantic search
+full stack
+front end
+back end
+web development
+mobile development
+iOS development
+Android development
+cross platform
+micro frontend
+serverless
+event driven
+domain driven design
+test driven development

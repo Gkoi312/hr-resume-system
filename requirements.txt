@@ -1,0 +1,30 @@
+# HR Resume Screening System - core + parsers + tests
+python-dotenv>=1.0.0
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.29.0
+pydantic>=2.0.0
+httpx>=0.25.0
+bcrypt>=4.0.0
+python-jose[cryptography]>=3.3.0
+
+# Parsers
+python-docx>=1.0.0
+# Resume PDF/image: install PaddleOCR + PP-Structure in your env (e.g. conda hr_resume), not pinned here.
+# PDF → images for resume vision parsing (optional; RESUME_LLM_VISION=1)
+pymupdf>=1.24.0
+
+# API tests (SQLite 内存库，无需 PostgreSQL)
+aiosqlite>=0.19.0
+pytest>=7.0.0
+
+# Embeddings (BGE via SentenceTransformers)
+sentence-transformers>=2.0.0
+
+# Vector DB support for Postgres (pgvector)
+pgvector
+
+# Hybrid retrieval (BM25): Chinese word segmentation
+jieba>=0.42.1
