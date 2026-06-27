@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: hr_resume
+      POSTGRES_PASSWORD: hr_resume
+      POSTGRES_DB: hr_resume
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hr_resume -d hr_resume"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.docker
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build: .
+    env_file:
+      - .env.docker
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m app.workers.task_worker
+
+  # One-shot seed: populate demo data then exit
+  seed:
+    build: .
+    env_file:
+      - .env.docker
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python scripts/seed_demo_data.py
+
+  # Demo frontend
+  demo:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env.docker
+    depends_on:
+      api:
+        condition: service_started
+    command: streamlit run demo/app.py --server.address 0.0.0.0 --server.port 8501
+
+volumes:
+  pgdata:

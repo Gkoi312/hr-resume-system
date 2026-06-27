@@ -1,5 +1,7 @@
 # HR Resume System
 
+[![Run Tests](https://github.com/gaojiaxin/hr_resume_system/actions/workflows/test.yml/badge.svg)](https://github.com/gaojiaxin/hr_resume_system/actions/workflows/test.yml)
+
 面向 **HR 初筛实习生/校招简历** 的后端服务：管理岗位（JD）、简历与候选人主档，在 **学历等硬门槛** 之上用 **规则 + 语义向量** 对「岗位 ↔ 候选人」批量打分，生成 **可解释的匹配记录**；支持异步任务与向量索引。
 
 ---
@@ -91,6 +93,47 @@ python -m app.workers.task_worker
 ```
 
 可调：`TASK_WORKER_POLL_INTERVAL`、`TASK_WORKER_MAX_CONCURRENCY`、`TASK_WORKER_ID`。
+
+---
+
+## 🐳 Docker 一键启动
+
+```bash
+git clone <repo-url> && cd hr_resume_system
+docker-compose up -d
+```
+
+启动后：
+| 服务 | 地址 |
+|------|------|
+| API 文档 (Swagger) | http://localhost:8000/docs |
+| Demo 前端 | http://localhost:8501 |
+| 数据库 (PostgreSQL+pgvector) | localhost:5432 |
+
+Docker Compose 自动启动 5 个服务：PostgreSQL + API + Worker + Seed（灌入 3 岗位 + 10 候选人）+ Demo 前端。
+
+Demo 环境**零外部依赖**：embedding 用 debug 模式，无需 LLM API Key，开箱即用。
+
+---
+
+## 🖥️ Demo 前端
+
+![Demo Screenshot](docs/screenshots/demo_overview.png)
+
+Demo 提供 4 个页面：
+- **岗位管理** — 列表查看 / 手动创建 / 上传 JD 文件自动解析
+- **简历 & 候选人** — 批量上传简历（PDF/DOCX/图片），查看候选人画像
+- **匹配分析** — 选岗位 → 学历过滤 → 多轴打分 → 可解释排序结果
+- 每条匹配可展开查看：硬门槛 / 技能对比 / 语义证据 / Delivery 对齐表 / LLM 质量评估 / 分数拆解
+
+```bash
+# 单独启动 Demo（需要后端已在 8000 端口运行）
+cd demo
+pip install streamlit pandas requests
+streamlit run app.py
+```
+
+> 截图请补充至 `docs/screenshots/` 目录。
 
 ---
 
