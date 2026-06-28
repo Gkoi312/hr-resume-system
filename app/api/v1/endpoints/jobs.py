@@ -105,7 +105,7 @@ async def list_jobs(
     offset: int = Query(0, ge=0),
     current_user: Optional[UserModel] = Depends(get_current_user_optional),
 ):
-    """List jobs with optional filters. Authenticated users only see their own jobs."""
+    """List jobs with optional filters. Authenticated users see own jobs + unowned (seed) jobs."""
     scope_id = current_user.id if current_user is not None else created_by_id
     return await job_service.list_jobs(
         created_by_id=scope_id,

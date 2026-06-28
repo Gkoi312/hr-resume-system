@@ -182,15 +182,45 @@ async def filter_candidates_by_resume_education(
     for c in candidates:
         resumes = by_cand.get(c.id, [])
         ok, levels, best_rank = _evaluate_resumes_for_requirement(req_min, resumes)
-        meta[c.id] = {
-            "required_education": req_raw,
-            "meets_requirement": ok,
-            "resume_degree_levels": levels,
-            "education_gate_source": "resume_parsed",
-            "education_required_min_rank": req_min,
-            "resume_best_degree_rank": best_rank,
-        }
-        if ok:
+
+        # If NO resume has usable education data at all, treat as "unknown"
+        # rather than "failed" — we don't discard people we can't evaluate.
+        has_any_edu_data = any(
+            r.parsed is not None
+            and r.status in _USABLE_STATUSES
+            and bool(education_entries_from_parsed(r.parsed))
+            for r in resumes
+        )
+
+        if not has_any_edu_data:
+            meta[c.id] = {
+                "required_education": req_raw,
+                "meets_requirement": True,
+                "resume_degree_levels": [],
+                "education_gate_source": "unknown_no_parsed_education",
+                "education_required_min_rank": req_min,
+                "resume_best_degree_rank": None,
+            }
             kept.append(c)
+        elif ok:
+            meta[c.id] = {
+                "required_education": req_raw,
+                "meets_requirement": True,
+                "resume_degree_levels": levels,
+                "education_gate_source": "resume_parsed",
+                "education_required_min_rank": req_min,
+                "resume_best_degree_rank": best_rank,
+            }
+            kept.append(c)
+        else:
+            meta[c.id] = {
+                "required_education": req_raw,
+                "meets_requirement": False,
+                "resume_degree_levels": levels,
+                "education_gate_source": "resume_parsed",
+                "education_required_min_rank": req_min,
+                "resume_best_degree_rank": best_rank,
+            }
+            # NOT kept — explicitly below requirement
 
     return kept, meta

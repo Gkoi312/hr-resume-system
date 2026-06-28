@@ -24,25 +24,28 @@ def score_bar(label: str, score: Optional[float], max_val: float = 1.0, help_tex
 
 
 def render_score_breakdown(breakdown: Optional[Dict[str, Any]]) -> None:
-    """Render ScoreBreakdown as metrics row."""
+    """Render ScoreBreakdown as metrics row.
+
+    Formula: overall = skill × quality_factor
+    Semantic score is display-only (not in formula).
+    """
     if not breakdown:
         st.caption("暂无分数详情")
         return
+    qf = breakdown.get("quality_factor")
     cols = st.columns(4)
     with cols[0]:
-        st.metric("综合分", f"{breakdown.get('overall_score', 0):.3f}" if breakdown.get("overall_score") is not None else "N/A")
+        st.metric("综合分", f"{breakdown.get('overall_score', 0):.3f}" if breakdown.get("overall_score") is not None else "N/A",
+                  delta=f"系数 {qf:.2f}" if qf else None)
     with cols[1]:
         sk = breakdown.get("skill_score")
-        sw = breakdown.get("skill_weight")
-        st.metric("技能分", f"{sk:.3f}" if sk is not None else "N/A", delta=f"权重 {sw}" if sw else None)
+        st.metric("技能分", f"{sk:.3f}" if sk is not None else "N/A")
     with cols[2]:
         se = breakdown.get("semantic_score")
-        sew = breakdown.get("semantic_weight")
-        st.metric("语义分", f"{se:.3f}" if se is not None else "N/A", delta=f"权重 {sew}" if sew else None)
+        st.metric("语义分(参考)", f"{se:.3f}" if se is not None else "N/A")
     with cols[3]:
         ll = breakdown.get("llm_quality_score")
-        lw = breakdown.get("llm_quality_weight")
-        st.metric("LLM质量分", f"{ll:.3f}" if ll is not None else "N/A", delta=f"权重 {lw}" if lw else None)
+        st.metric("质量分", f"{ll:.3f}" if ll is not None else "N/A")
 
 
 def render_semantic_evidence(evidence: Optional[List[Dict[str, Any]]]) -> None:
@@ -135,6 +138,16 @@ def render_match_card(match: Dict[str, Any], rank: int = 0) -> None:
             name = match.get("candidate_name") or explanation.get("candidate_name", "?")
             email = match.get("candidate_email") or ""
             st.markdown(f"**{name}**  {f'({email})' if email else ''}")
+
+            # Education gate status badge
+            edu_gate_src = explanation.get("education_gate_source", "")
+            if edu_gate_src == "unknown_no_parsed_education":
+                st.caption("🎓 学历未验证")
+            elif edu_gate_src == "resume_parsed" and not explanation.get("hard_requirements_met"):
+                st.caption("🎓 学历不达标")
+            elif edu_gate_src == "resume_parsed":
+                st.caption("🎓 学历已核验")
+
             if action_icon:
                 st.caption(action_icon)
         with hdr_cols[2]:

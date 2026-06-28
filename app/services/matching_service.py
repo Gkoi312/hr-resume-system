@@ -24,7 +24,11 @@ from app.database.repository.match_repository import match_repository
 from app.rag.hybrid_retrieval import tokenize
 from app.rag.vector_store import vector_store
 from app.services.education_resume_gate import filter_candidates_by_resume_education
-from app.services.llm_quality_scoring import score_candidate_quality_with_llm
+from app.services.experience_quality_scoring import score_candidate_experience_quality
+from app.services.llm_quality_scoring import (
+    quality_llm_enabled,
+    score_candidate_quality_with_llm,
+)
 from app.services.semantic_chunk_matching import (
     compute_semantic_scores_for_candidates_bulk,
 )
@@ -41,16 +45,34 @@ from app.schemas.match import (
     SemanticSnippet,
 )
 
-_WEIGHT_SKILL = 0.30
-_WEIGHT_SEMANTIC = 0.40
-_WEIGHT_LLM = 0.30
+# Scoring formula (2026-06-28):
+#   overall = skill_score × quality_factor
+#   quality_factor = 0.6 + 0.4 × (quality_score / 100)
+#
+# Rationale:
+# - Skill matching is the primary job-fit signal (validated by ablation study).
+# - Semantic (vector chunk) score does NOT participate in the weighted formula —
+#   ablation showed removing it improves or ties ranking on all 15 eval jobs.
+# - Quality score acts as a credibility multiplier, not an additive dimension:
+#   a candidate with perfect skills but zero evidence gets at most 40% penalty;
+#   a candidate with great writing but wrong skills cannot overcome the skill deficit.
+# - Factor floor at 0.6 (not 0.5): quality scores empirically cluster around 15-55
+#   (max ~54 on eval data). A 0.5 floor would make the practical factor range too
+#   narrow (0.55-0.77), compressing overall scores and causing no one to reach
+#   the "recommend_interview" threshold.
+# - Quality score source: rule-based by default; LLM optional when MATCH_LLM_ENABLED=1.
+
+def _compute_quality_factor(quality_score: float) -> float:
+    """Map quality_score (0-100) to a multiplicative factor (0.6-1.0)."""
+    return 0.6 + 0.4 * (quality_score / 100.0)
 
 
 def _pros_cons_recommendation(
     overall_score: float,
     semantic_score: float,
     skill_score: float,
-    llm_quality_score: float,
+    quality_score: float,
+    quality_status: Optional[str],
     semantic_status: Optional[str],
 ) -> tuple[List[str], List[str], str]:
     pros: List[str] = []
@@ -68,15 +90,20 @@ def _pros_cons_recommendation(
             pros.append("简历与岗位存在一定语义相关性")
         else:
             cons.append("简历与岗位语义相关性偏低")
-    if llm_quality_score >= 75:
-        pros.append("项目与实习描述较具体，经历质量较好")
-    elif llm_quality_score < 40:
-        cons.append("项目与实习描述较空泛，证据质量偏弱")
-    if overall_score >= 80:
+    if quality_score >= 70:
+        pros.append("实习/项目描述较充实，经历质量较好")
+    elif quality_score <= 20:
+        cons.append("实习/项目描述偏少或空泛，经历证据较弱")
+    elif quality_score <= 40:
+        cons.append("实习/项目描述较简短，建议补充细节")
+    if quality_status == "disabled":
+        cons.append("经历质量评分为规则版（LLM 未启用），精细度有限")
+    # Adjusted thresholds — overall = skill × quality_factor (max ~100, typical 40-80)
+    if overall_score >= 70:
         recommendation = "建议进入初筛"
-    elif overall_score >= 60:
+    elif overall_score >= 50:
         recommendation = "建议备选"
-    elif overall_score >= 40:
+    elif overall_score >= 35:
         recommendation = "可观望"
     else:
         recommendation = "暂不推荐"
@@ -101,13 +128,28 @@ def _build_match_explanation(
     levels = education_gate.get("resume_degree_levels") or []
     meets_edu = education_gate.get("meets_requirement")
     gate_src = education_gate.get("education_gate_source")
-    if req_edu and meets_edu and gate_src == "resume_parsed":
-        hard_met.append(
-            "学历硬性门槛已通过（简历结构化）：要求 {}；简历学历：{}".format(
-                req_edu,
-                " / ".join(levels) if levels else "已匹配",
+    if req_edu:
+        if gate_src == "resume_parsed" and meets_edu:
+            hard_met.append(
+                "学历硬性门槛已通过（简历结构化）：要求 {}；简历学历：{}".format(
+                    req_edu,
+                    " / ".join(levels) if levels else "已匹配",
+                )
             )
-        )
+        elif gate_src == "resume_parsed" and not meets_edu:
+            hard_missing.append(
+                "学历不满足要求：要求 {}；简历学历：{}".format(
+                    req_edu,
+                    " / ".join(levels) if levels else "未识别",
+                )
+            )
+        elif gate_src == "unknown_no_parsed_education":
+            risks.append(
+                "学历信息缺失：要求 {}，但简历尚未解析或未提取到学历信息，无法验证是否达标".format(
+                    req_edu
+                )
+            )
+            focus_points.append("尽快完成简历解析，确认候选人学历是否满足岗位要求")
     matched_skills = list(skill_info.get("matched_skills") or [])
     missing_skills = list(skill_info.get("missing_skills") or [])
     if matched_skills:
@@ -121,31 +163,34 @@ def _build_match_explanation(
 
     if semantic_score >= 75:
         strong.append("语义向量匹配表现较好，可结合片段证据复核")
-    llm_status = str(llm_info.get("status") or "")
-    if llm_status == "available":
-        if float(llm_info.get("impact_score") or 0.0) >= 75:
-            strong.append("项目/实习体现出较强结果导向或业务价值")
+    quality_status = str(llm_info.get("status") or "")
+    if quality_status in ("available", "rule_based"):
         if float(llm_info.get("evidence_quality_score") or 0.0) >= 75:
-            strong.append("项目/实习描述较具体，技术动作与职责边界较清晰")
+            strong.append("实习/项目描述较具体充实")
+        if float(llm_info.get("impact_score") or 0.0) >= 75:
+            strong.append("项目/实习体现出较强结果导向或大厂经验")
         if float(llm_info.get("consistency_risk") or 0.0) >= 60:
-            risks.append("项目/实习描述存在一定空泛或堆词风险")
-    elif llm_status and llm_status != "available":
-        risks.append("LLM 质量评分不可用：{}".format(llm_status))
+            risks.append("实习/项目描述存在一定空泛或简短风险")
+    elif quality_status == "disabled":
+        pass  # rule-based score still computed, no extra risk
+    elif quality_status and quality_status not in ("available", "rule_based", "disabled"):
+        risks.append("经历质量评分不可用：{}".format(quality_status))
 
-    if overall_score >= 80:
+    if overall_score >= 70:
         suggested = "recommend_interview"
-    elif overall_score >= 60:
+    elif overall_score >= 50:
         suggested = "further_screening"
     else:
         suggested = "not_recommended"
 
     summary_parts: List[str] = []
+    quality_score_val = round(float(llm_info.get("llm_quality_score") or 0.0), 1)
     summary_parts.append(
-        "综合匹配分：{}。技能分：{}；语义分：{}；质量分：{}。".format(
+        "综合匹配分：{}（技能 {} × 质量系数 {:.2f}）。语义分：{}（仅供参考）。".format(
             overall_score,
             round(float(skill_info.get("skill_score") or 0.0), 1),
+            0.6 + 0.4 * quality_score_val / 100.0,
             semantic_score,
-            round(float(llm_info.get("llm_quality_score") or 0.0), 1),
         )
     )
     if hard_met:
@@ -253,18 +298,20 @@ class MatchingService:
                 else None
             )
             skill_info = score_candidate_skills(job, candidate)
-            llm_info = await score_candidate_quality_with_llm(candidate)
+            # Quality scoring: LLM when enabled (higher precision), rule-based otherwise.
+            if quality_llm_enabled():
+                llm_info = await score_candidate_quality_with_llm(candidate)
+                quality_status = str(llm_info.get("status") or "unknown")
+            else:
+                llm_info = score_candidate_experience_quality(candidate)
+                quality_status = str(llm_info.get("status") or "rule_based")
             skill_score = round(float(skill_info.get("skill_score") or 0.0), 1)
             semantic_score = round(float(sem_s), 1)
             llm_quality_score = round(float(llm_info.get("llm_quality_score") or 0.0), 1)
-            overall = round(
-                _WEIGHT_SKILL * skill_score
-                + _WEIGHT_SEMANTIC * semantic_score
-                + _WEIGHT_LLM * llm_quality_score,
-                1,
-            )
+            quality_factor = round(_compute_quality_factor(llm_quality_score), 4)
+            overall = round(skill_score * quality_factor, 1)
             pros, cons, rec = _pros_cons_recommendation(
-                overall, semantic_score, skill_score, llm_quality_score, sem_status
+                overall, semantic_score, skill_score, llm_quality_score, quality_status, sem_status
             )
             explanation = _build_match_explanation(
                 edu_gate,
@@ -276,6 +323,9 @@ class MatchingService:
             )
             if isinstance(sem_details, dict):
                 explanation.semantic_status = sem_details.get("semantic_status")
+            explanation.education_gate_source = edu_gate.get("education_gate_source")
+            explanation.candidate_degree_rank = edu_gate.get("resume_best_degree_rank")
+            explanation.candidate_degree_levels = edu_gate.get("resume_degree_levels") or []
             evidence_snippets = (
                 sem_details.get("evidence_snippets")
                 if isinstance(sem_details, dict)
@@ -305,15 +355,13 @@ class MatchingService:
                 consistency_risk=float(llm_info.get("consistency_risk") or 0.0),
                 llm_quality_score=llm_quality_score,
                 summary=llm_info.get("summary"),
-                status=str(llm_info.get("status") or "unknown"),
+                status=quality_status,
             )
             explanation.score_breakdown = ScoreBreakdown(
                 skill_score=skill_score,
                 semantic_score=semantic_score,
                 llm_quality_score=llm_quality_score,
-                skill_weight=_WEIGHT_SKILL,
-                semantic_weight=_WEIGHT_SEMANTIC,
-                llm_quality_weight=_WEIGHT_LLM,
+                quality_factor=quality_factor,
                 overall_score=overall,
             )
             match = await match_repository.create(

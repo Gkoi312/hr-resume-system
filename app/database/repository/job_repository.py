@@ -4,7 +4,7 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 
 from app import statuses
@@ -64,7 +64,12 @@ class JobRepository:
         async with get_session_context() as session:
             stmt = select(JobModel).order_by(JobModel.updated_at.desc())
             if created_by_id is not None:
-                stmt = stmt.where(JobModel.created_by_id == created_by_id)
+                stmt = stmt.where(
+                    or_(
+                        JobModel.created_by_id == created_by_id,
+                        JobModel.created_by_id.is_(None),
+                    )
+                )
             if status is not None:
                 stmt = stmt.where(JobModel.status == status)
             stmt = stmt.limit(limit).offset(offset)

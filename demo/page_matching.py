@@ -133,20 +133,54 @@ def render():
         st.markdown("### 📊 匹配结果")
 
         total = len(results)
-        avg_score = sum(r.get("overall_score") or 0 for r in results) / total if total else 0
         recommended = sum(1 for r in results if (r.get("explanation") or {}).get("suggested_action") == "recommend_interview")
         screening = sum(1 for r in results if (r.get("explanation") or {}).get("suggested_action") == "further_screening")
 
         for col, label, val in zip(
-            st.columns(5),
-            ["匹配人数", "平均分", "建议面试", "待筛选", "最高分"],
-            [total, f"{avg_score:.3f}", recommended, screening, f"{max(r.get('overall_score') or 0 for r in results):.3f}"],
+            st.columns(4),
+            ["匹配人数", "建议面试", "待筛选", "最高分"],
+            [total, recommended, screening, f"{max(r.get('overall_score') or 0 for r in results):.3f}"],
         ):
             col.metric(label, val)
 
+        # ── Education filter ────────────────────────────────────────
         st.markdown("---")
-        for rank, match in enumerate(results, start=1):
-            render_match_card(match, rank=rank)
+        RANK_LABELS = {0: "大专", 1: "本科", 2: "硕士", 3: "博士"}
+        filter_col1, filter_col2, filter_col3 = st.columns([2, 2, 1])
+        with filter_col1:
+            st.caption("🎓 按学历筛选")
+            show_unknown = st.checkbox("学历未知", value=True, key="edu_unknown")
+            show_college = st.checkbox("大专", value=True, key="edu_college")
+            show_bachelor = st.checkbox("本科", value=True, key="edu_bachelor")
+        with filter_col2:
+            st.caption("　")  # spacer
+            show_master = st.checkbox("硕士", value=True, key="edu_master")
+            show_doctor = st.checkbox("博士", value=True, key="edu_doctor")
+        with filter_col3:
+            st.caption("　")
+            edu_selected = [k for k, v in {
+                None: show_unknown, 0: show_college, 1: show_bachelor,
+                2: show_master, 3: show_doctor,
+            }.items() if v]
+
+        # Apply filter
+        filtered = []
+        for match in results:
+            expl = match.get("explanation") or {}
+            rank = expl.get("candidate_degree_rank")
+            # None means unknown; treat as None key
+            filter_key = rank if rank is not None else None
+            if filter_key in edu_selected:
+                filtered.append(match)
+
+        st.caption(f"显示 {len(filtered)} / {len(results)} 人")
+        st.markdown("---")
+
+        if not filtered:
+            st.info("当前筛选条件下无匹配候选人，请调整学历勾选")
+        else:
+            for rank, match in enumerate(filtered, start=1):
+                render_match_card(match, rank=rank)
 
         with st.expander("🔧 原始 JSON 数据"):
             st.json(results)

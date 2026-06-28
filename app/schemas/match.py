@@ -36,14 +36,19 @@ class DeliveryAlignmentItem(BaseModel):
 
 
 class ScoreBreakdown(BaseModel):
-    """Top-level score composition for one match."""
+    """Top-level score composition for one match.
+
+    overall = skill_score × quality_factor
+    where quality_factor = 0.5 + 0.5 × (quality_score / 100)
+
+    Semantic score is retained for diagnostic / evidence display but does NOT
+    participate in the weighted overall formula.
+    """
 
     skill_score: Optional[float] = None
     semantic_score: Optional[float] = None
     llm_quality_score: Optional[float] = None
-    skill_weight: Optional[float] = None
-    semantic_weight: Optional[float] = None
-    llm_quality_weight: Optional[float] = None
+    quality_factor: Optional[float] = None
     overall_score: Optional[float] = None
 
 
@@ -87,6 +92,9 @@ class MatchExplanation(BaseModel):
     job_skill_terms: List[str] = []
     candidate_skill_terms: List[str] = []
     semantic_status: Optional[str] = None
+    education_gate_source: Optional[str] = None
+    candidate_degree_rank: Optional[int] = None
+    candidate_degree_levels: List[str] = []
     semantic_evidence: Optional[List[SemanticSnippet]] = None
     delivery_alignments: Optional[List[DeliveryAlignmentItem]] = None
     llm_quality: Optional[LLMQualityBreakdown] = None

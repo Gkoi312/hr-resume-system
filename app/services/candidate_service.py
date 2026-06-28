@@ -2,12 +2,17 @@
 """Minimal candidate service for API: get, list."""
 
 import uuid
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.database.repository.candidate_repository import candidate_repository
 from app.schemas.candidate import CandidateCreate, CandidateResponse, CandidateUpdate
 from app.schemas.task import TaskCreate
+from app.services.education_resume_gate import (
+    _max_degree_rank_from_entries,
+    degree_rank_from_text,
+)
 from app.services.task_service import task_service
+
 
 class CandidateService:
     """Service for candidate operations."""
@@ -59,18 +64,39 @@ class CandidateService:
         sort_by: str = "updated_at",
         sort_order: str = "desc",
     ) -> List[CandidateResponse]:
-        """List candidates with optional search filters."""
+        """List candidates with optional search filters.
+
+        Education filter uses degree-rank comparison (not text LIKE), so
+        selecting "本科" returns candidates with bachelor's degree or above.
+        """
+        # Convert education text to minimum rank for post-filtering.
+        # SQL-level LIKE on JSON is unreliable; we filter in Python instead.
+        edu_min_rank: Optional[int] = None
+        if education:
+            edu_min_rank = degree_rank_from_text(education)
+
         candidates = await candidate_repository.list(
             limit=limit,
             offset=offset,
             keyword=keyword,
             skill=skill,
             industry=industry,
-            education=education,
+            education=None,  # post-filter below instead of SQL LIKE
             min_years=min_years,
             sort_by=sort_by,
             sort_order=sort_order,
         )
+
+        # Post-filter by degree rank
+        if edu_min_rank is not None:
+            filtered: list = []
+            for c in candidates:
+                entries = c.education if isinstance(c.education, list) else []
+                best = _max_degree_rank_from_entries(entries)
+                if best is not None and best >= edu_min_rank:
+                    filtered.append(c)
+            candidates = filtered
+
         return [CandidateResponse.model_validate(c) for c in candidates]
 
     async def update_candidate(

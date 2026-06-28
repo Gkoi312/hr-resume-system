@@ -4,7 +4,7 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Select, String, and_, func, or_, select
+from sqlalchemy import Select, String, Text, and_, cast, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.database.models import CandidateModel
@@ -116,25 +116,21 @@ class CandidateRepository:
                 )
             if min_years is not None:
                 conditions.append(CandidateModel.years_of_experience >= min_years)
-            # For JSON fields we start with simple text search to keep implementation small.
+            # JSONB columns: cast to text for LIKE search (PostgreSQL-safe).
             if skill:
                 pattern = f"%{skill.lower()}%"
                 conditions.append(
-                    func.lower(func.cast(CandidateModel.skills, String)).like(pattern)
+                    func.lower(cast(CandidateModel.skills, Text)).like(pattern)
                 )
             if education:
                 pattern = f"%{education.lower()}%"
                 conditions.append(
-                    func.lower(func.cast(CandidateModel.education, String)).like(
-                        pattern
-                    )
+                    func.lower(cast(CandidateModel.education, Text)).like(pattern)
                 )
             if industry:
                 pattern = f"%{industry.lower()}%"
                 conditions.append(
-                    func.lower(func.cast(CandidateModel.work_experience, String)).like(
-                        pattern
-                    )
+                    func.lower(cast(CandidateModel.work_experience, Text)).like(pattern)
                 )
 
             if conditions:
