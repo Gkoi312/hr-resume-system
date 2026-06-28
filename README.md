@@ -1,6 +1,6 @@
 # HR Resume System
 
-[![Run Tests](https://github.com/gaojiaxin/hr_resume_system/actions/workflows/test.yml/badge.svg)](https://github.com/gaojiaxin/hr_resume_system/actions/workflows/test.yml)
+[![Run Tests](https://github.com/gkoi312/hr-resume-system/actions/workflows/test.yml/badge.svg)](https://github.com/gkoi312/hr-resume-system/actions/workflows/test.yml)
 
 面向 **HR 初筛实习生/校招简历** 的后端服务：管理岗位（JD）、简历与候选人主档，在 **学历硬门槛** 之上按 **技能匹配度 × 经历可信度** 对「岗位 ↔ 候选人」批量打分，生成 **可解释的匹配记录**（含技能命中/缺失列表、职责-经历对齐证据片段）；支持异步任务与混合检索。
 
